@@ -113,7 +113,7 @@ flags.DEFINE_string('dim_weights_ckpt', '', 'Dimension scale transform.')
 flags.DEFINE_boolean('normalize', True, 'Normalize dataset to [-1, 1].')
 
 # Logging, checkpointing, and evaluation
-flags.DEFINE_integer('logging_freq', 100, 'Logging frequency.')
+flags.DEFINE_integer('logging_freq', 600, 'Logging frequency.')
 flags.DEFINE_integer('snapshot_freq', 5000,
                      'Evaluation and checkpoint frequency.')
 flags.DEFINE_boolean('snapshot_sampling', True,
@@ -363,7 +363,6 @@ def train(train_batches, valid_batches, sigmas, output_dir=None, verbose=True):
 
       if FLAGS.ema:
         ema = ema.update(optimizer.target)
-
       if step % FLAGS.logging_freq == 0:
         elapsed = time.time() - start_time
         batch_per_sec = (step + 1) / elapsed

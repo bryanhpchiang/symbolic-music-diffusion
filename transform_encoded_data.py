@@ -25,11 +25,12 @@ from absl import app
 from absl import flags
 from absl import logging
 from functools import reduce
+from IPython import embed
 
 import numpy as np
 import tensorflow as tf
 
-sys.path.append("{}/../".format(os.path.dirname(os.path.abspath(__file__))))
+# sys.path.append("{}/../".format(os.path.dirname(os.path.abspath(__file__))))
 import utils.data_utils as data_utils
 
 FLAGS = flags.FLAGS
@@ -175,6 +176,7 @@ def main(argv):
       train_files).map(lambda x: tf.py_function(
           lambda binary: pickle.loads(binary.numpy()), [x], tensor_shape),
                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+  # embed()
   eval_dataset = tf.data.TFRecordDataset(
       eval_files).map(lambda x: tf.py_function(
           lambda binary: pickle.loads(binary.numpy()), [x], tensor_shape),
@@ -252,6 +254,7 @@ def main(argv):
         break
 
     logging.info(f'Discarded {discard} invalid sequences.')
+    embed()
     if len(targets) > 0:
       save_shard(contexts, targets,
                  output_fp.format(FLAGS.output_path, split, count))

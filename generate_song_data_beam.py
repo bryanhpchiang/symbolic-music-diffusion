@@ -21,17 +21,21 @@ from absl import app
 from absl import flags
 from absl import logging
 import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.metrics import Metrics
 from magenta.models.music_vae import TrainedModel
 import note_seq
+from IPython import embed
 
-from .. import config
-from ../utils/ import song_utils
+# from ... import config
+# from ..utils import song_utils
+import config
+from utils import song_utils
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
-    'pipeline_options', '--runner=DirectRunner',
+    'pipeline_options', '--runner=DirectRunner,--targetParallelism=16',
     'Command line flags to use in constructing the Beam pipeline options.')
 
 # Model
@@ -51,6 +55,7 @@ class EncodeSong(beam.DoFn):
 
   def setup(self):
     logging.info('Loading pre-trained model %s', FLAGS.model)
+    logging.info('checkpoint path = %s', FLAGS.checkpoint)
     self.model_config = config.MUSIC_VAE_CONFIG[FLAGS.model]
     self.model = TrainedModel(self.model_config,
                               batch_size=1,
@@ -99,15 +104,24 @@ class EncodeSong(beam.DoFn):
 def main(argv):
   del argv  # unused
 
-  pipeline_options = beam.options.pipeline_options.PipelineOptions(
+  pipeline_options = PipelineOptions(
       FLAGS.pipeline_options.split(','))
 
+  # pipeline_options = PipelineOptions([
+  #   "--runner=PortableRunner",
+  #   "--job_endpoint=localhost:8099",
+  #   "--environment_type=LOOPBACK", 
+  # ])
+
+  print(f"{FLAGS.checkpoint = }")
+  encode_song = EncodeSong()  
+  # embed()
   with beam.Pipeline(options=pipeline_options) as p:
-    p |= 'tfrecord_list' >> beam.Create(FLAGS.input)
+    p |= 'tfrecord_list' >> beam.Create([FLAGS.input])
     p |= 'read_tfrecord' >> beam.io.tfrecordio.ReadAllFromTFRecord(
         coder=beam.coders.ProtoCoder(note_seq.NoteSequence))
     p |= 'shuffle_input' >> beam.Reshuffle()
-    p |= 'encode_song' >> beam.ParDo(EncodeSong())
+    p |= 'encode_song' >> beam.ParDo(encode_song)
     p |= 'shuffle_output' >> beam.Reshuffle()
     p |= 'write' >> beam.io.WriteToTFRecord(FLAGS.output)
 
