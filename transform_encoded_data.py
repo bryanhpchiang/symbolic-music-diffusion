@@ -232,6 +232,7 @@ def main(argv):
           example_count += 1
           targets.append(vec)
       elif FLAGS.mode == 'sequences':
+        # look here
         for i in range(0, len(song) - ctx_window, stride):
           context = song[i:i + ctx_window]
           if FLAGS.remove_zeros and np.where(
@@ -254,7 +255,9 @@ def main(argv):
         break
 
     logging.info(f'Discarded {discard} invalid sequences.')
+
     embed()
+    
     if len(targets) > 0:
       save_shard(contexts, targets,
                  output_fp.format(FLAGS.output_path, split, count))

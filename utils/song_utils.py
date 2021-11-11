@@ -239,7 +239,7 @@ def encode_songs(model, songs, chunk_length=None, programs=None):
     programs: A list of integers specifying which MIDI programs to use.
         Default is to keep all available programs.
 
-  Returns:
+  Returns:q
     A list of numpy matrices each with shape [3, len(song_chunks), latent_dims].
 	"""
   assert model is not None, 'No model provided.'
