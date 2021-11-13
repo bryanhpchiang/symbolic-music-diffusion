@@ -192,6 +192,37 @@ def evaluate(writer, real, collection, baseline, valid_real):
             # writer.scalar(f"{log_dir}mmd_polynomial", mmd_polynomial, step=i)
 
             # average
+
+            # do plotting for a single sample
+            plot = True
+            if plot:
+                sample_idx = 0
+
+                fd = [
+                    metrics.frechet_distance(real[sample_idx], sample)
+                    for sample in collection[:, sample_idx, ...]
+                ]
+                mmd_rbf = [
+                    metrics.mmd_rbf(real[sample_idx], sample)
+                    for sample in collection[:, sample_idx, ...]
+                ]
+                mdd_polynomial = [
+                    metrics.mmd_polynomial(real[sample_idx], sample)
+                    for sample in collection[:, sample_idx, ...]
+                ]
+
+                def plot_latent_dist(dist, collection, label):
+                    plt.figure()
+                    plt.plot(range(collection.shape[0]), dist)
+                    plt.xlabel("Timesteps")
+                    plt.ylabel(f"Distance ({label})")
+                    plt.savefig(f"latent_dist_{label}.png")
+
+                plot_latent_dist(fd, collection, "frechet_distance")
+                plot_latent_dist(mmd_rbf, collection, "mmd_rbf")
+                plot_latent_dist(mdd_polynomial, collection, "mmd_polynomial")
+            embed()
+
             frechet_dist = jnp.array(
                 [metrics.frechet_distance(r, s) for r, s in zip(real, samples)]
             )
@@ -378,7 +409,7 @@ def diffusion_decoder(z_list, rng_seed=1):
     return gen, collects, sampling_metrics
 
 
-def generate_samples(sample_shape, num_samples, rng_seed=1):
+def generate_samples(sample_shape, num_samples, rng_seed=1, checkpoint_step=None):
     """Generate samples using pre-trained score network.
 
     Args:
@@ -405,7 +436,7 @@ def generate_samples(sample_shape, num_samples, rng_seed=1):
 
     # Load learned parameters
     optimizer, ema, early_stop = checkpoints.restore_checkpoint(
-        FLAGS.model_dir, (optimizer, ema, early_stop), step=79
+        FLAGS.model_dir, (optimizer, ema, early_stop), step=checkpoint_step
     )
 
     # Create noise schedule

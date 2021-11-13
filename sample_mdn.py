@@ -21,6 +21,7 @@ from absl import app
 from absl import flags
 from absl import logging
 from functools import partial
+from IPython import embed
 
 import jax
 import jax.numpy as jnp
@@ -35,146 +36,170 @@ import utils.data_utils as data_utils
 import utils.train_utils as train_utils
 import utils.losses as losses
 import utils.metrics as metrics
-import train_transformer
+
+# import train_transformer
+import train_mdn
 import input_pipeline
 
 from tensorflow_probability.substrates import jax as tfp
+
 tfd = tfp.distributions
 
 FLAGS = flags.FLAGS
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
-flags.DEFINE_integer('sample_seed', 1,
-                     'Random number generator seed for sampling.')
-flags.DEFINE_string('sampling_dir', 'sample', 'Sampling directory.')
-flags.DEFINE_integer('sample_size', 1000, 'Number of samples.')
-flags.DEFINE_boolean('flush', True, 'Flush generated samples to disk.')
+flags.DEFINE_integer("sample_seed", 1, "Random number generator seed for sampling.")
+flags.DEFINE_string("sampling_dir", "sample", "Sampling directory.")
+flags.DEFINE_integer("sample_size", 1000, "Number of samples.")
+flags.DEFINE_boolean("flush", True, "Flush generated samples to disk.")
 
 
-def sample(num_samples=2400, steps=32, embedding_dims=42, rng_seed=1,
-           real=None):
-  """Generate samples using autoregressive decoding.
-  
-  Args:
-    num_samples: The number of samples to generate.
-    steps: Number of sampling steps.
-    embedding_dims: Number of dimensions per embedding.
-    rng_seed: Initialization seed.
- 
-  Returns:
-    generated: An array of generated samples.
-  """
-  rng = jax.random.PRNGKey(rng_seed)
-  rng, model_rng = jax.random.split(rng)
+def sample(num_samples=2400, steps=32, embedding_dims=42, rng_seed=1, real=None):
+    """Generate samples using autoregressive decoding.
 
-  # Create a model with dummy parameters and a dummy optimizer
-  lm_kwargs = {
-      'num_layers': FLAGS.num_layers,
-      'num_heads': FLAGS.num_heads,
-      'mdn_mixtures': FLAGS.mdn_components,
-      'num_mlp_layers': FLAGS.num_mlp_layers,
-      'mlp_dims': FLAGS.mlp_dims
-  }
-  model = train_transformer.create_model(model_rng, (steps, embedding_dims),
-                                         lm_kwargs,
-                                         batch_size=1,
-                                         verbose=True)
-  optimizer = train_transformer.create_optimizer(model, 0)
-  early_stop = train_utils.EarlyStopping()
+    Args:
+      num_samples: The number of samples to generate.
+      steps: Number of sampling steps.
+      embedding_dims: Number of dimensions per embedding.
+      rng_seed: Initialization seed.
 
-  # Load learned parameters
-  optimizer, early_stop = checkpoints.restore_checkpoint(
-      FLAGS.model_dir, (optimizer, early_stop))
+    Returns:
+      generated: An array of generated samples.
+    """
+    rng = jax.random.PRNGKey(rng_seed)
+    rng, model_rng = jax.random.split(rng)
 
-  # Autoregressive decoding
-  t0 = time.time()
-  tokens = jnp.zeros((num_samples, steps, embedding_dims))
+    # Create a model with dummy parameters and a dummy optimizer
+    lm_kwargs = {
+        "num_layers": FLAGS.num_layers,
+        "num_heads": FLAGS.num_heads,
+        "mdn_mixtures": FLAGS.mdn_components,
+        "num_mlp_layers": FLAGS.num_mlp_layers,
+        "mlp_dims": FLAGS.mlp_dims,
+    }
+    model = train_mdn.create_model(
+        model_rng, (steps, embedding_dims), lm_kwargs, batch_size=1, verbose=True
+    )
+    optimizer = train_mdn.create_optimizer(model, 0)
+    early_stop = train_utils.EarlyStopping()
 
-  for i in range(steps):
-    pi, mu, log_sigma = optimizer.target(tokens, shift=False)
+    # Load learned parameters
+    optimizer, early_stop = checkpoints.restore_checkpoint(
+        FLAGS.model_dir, (optimizer, early_stop)
+    )
 
-    channels = tokens.shape[-1]
-    mdn_k = pi.shape[-1]
-    out_pi = pi.reshape(-1, mdn_k)
-    out_mu = mu.reshape(-1, channels * mdn_k)
-    out_log_sigma = log_sigma.reshape(-1, channels * mdn_k)
-    mix_dist = tfd.Categorical(logits=out_pi)
-    mus = out_mu.reshape(-1, mdn_k, channels)
-    log_sigmas = out_log_sigma.reshape(-1, mdn_k, channels)
-    sigmas = jnp.exp(log_sigmas)
-    component_dist = tfd.MultivariateNormalDiag(loc=mus, scale_diag=sigmas)
-    mixture = tfd.MixtureSameFamily(mixture_distribution=mix_dist,
-                                    components_distribution=component_dist)
+    # Autoregressive decoding
+    t0 = time.time()
+    tokens = jnp.zeros((num_samples, steps, embedding_dims))
 
-    rng, embed_rng = jax.random.split(rng)
-    next_tokens = mixture.sample(seed=embed_rng).reshape(*tokens.shape)
-    next_z = next_tokens[:, i]
+    for i in range(steps):
+        pi, mu, log_sigma = optimizer.target(tokens, shift=False)
 
-    if i < steps - 1:
-      tokens = jax.ops.index_update(tokens, jax.ops.index[:, i + 1], next_z)
-    else:
-      tokens = next_tokens  # remove start token
+        channels = tokens.shape[-1]
+        mdn_k = pi.shape[-1]
+        out_pi = pi.reshape(-1, mdn_k)
+        out_mu = mu.reshape(-1, channels * mdn_k)
+        out_log_sigma = log_sigma.reshape(-1, channels * mdn_k)
+        mix_dist = tfd.Categorical(logits=out_pi)
+        mus = out_mu.reshape(-1, mdn_k, channels)
+        log_sigmas = out_log_sigma.reshape(-1, mdn_k, channels)
+        sigmas = jnp.exp(log_sigmas)
+        component_dist = tfd.MultivariateNormalDiag(loc=mus, scale_diag=sigmas)
+        mixture = tfd.MixtureSameFamily(
+            mixture_distribution=mix_dist, components_distribution=component_dist
+        )
 
-  logging.info('Generated samples in %f seconds', time.time() - t0)
-  return tokens
+        rng, embed_rng = jax.random.split(rng)
+        next_tokens = mixture.sample(seed=embed_rng).reshape(*tokens.shape)
+        next_z = next_tokens[:, i]
+
+        if i < steps - 1:
+            tokens = jax.ops.index_update(tokens, jax.ops.index[:, i + 1], next_z)
+        else:
+            tokens = next_tokens  # remove start token
+
+    logging.info("Generated samples in %f seconds", time.time() - t0)
+    return tokens
 
 
 def main(argv):
-  del argv  # unused
+    del argv  # unused
 
-  logging.info(FLAGS.flags_into_string())
-  logging.info('Platform: %s', jax.lib.xla_bridge.get_backend().platform)
+    logging.info(FLAGS.flags_into_string())
+    logging.info("Platform: %s", jax.lib.xla_bridge.get_backend().platform)
 
-  # Make sure TensorFlow does not allocate GPU memory.
-  tf.config.experimental.set_visible_devices([], 'GPU')
+    # Make sure TensorFlow does not allocate GPU memory.
+    tf.config.experimental.set_visible_devices([], "GPU")
 
-  log_dir = FLAGS.sampling_dir
+    log_dir = FLAGS.sampling_dir
 
-  pca = data_utils.load(os.path.expanduser(
-      FLAGS.pca_ckpt)) if FLAGS.pca_ckpt else None
-  slice_idx = data_utils.load(os.path.expanduser(
-      FLAGS.slice_ckpt)) if FLAGS.slice_ckpt else None
-  dim_weights = data_utils.load(os.path.expanduser(
-      FLAGS.dim_weights_ckpt)) if FLAGS.dim_weights_ckpt else None
+    pca = (
+        data_utils.load(os.path.expanduser(FLAGS.pca_ckpt)) if FLAGS.pca_ckpt else None
+    )
+    slice_idx = (
+        data_utils.load(os.path.expanduser(FLAGS.slice_ckpt))
+        if FLAGS.slice_ckpt
+        else None
+    )
+    dim_weights = (
+        data_utils.load(os.path.expanduser(FLAGS.dim_weights_ckpt))
+        if FLAGS.dim_weights_ckpt
+        else None
+    )
 
-  train_ds, eval_ds = input_pipeline.get_dataset(
-      dataset=FLAGS.dataset,
-      data_shape=FLAGS.data_shape,
-      problem='vae',
-      batch_size=FLAGS.batch_size,
-      normalize=FLAGS.normalize,
-      pca_ckpt=FLAGS.pca_ckpt,
-      slice_ckpt=FLAGS.slice_ckpt,
-      dim_weights_ckpt=FLAGS.dim_weights_ckpt,
-      include_cardinality=False)
-  eval_min, eval_max = eval_ds.min, eval_ds.max
-  eval_ds = eval_ds.unbatch()
-  if FLAGS.sample_size is not None:
-    eval_ds = eval_ds.take(FLAGS.sample_size)
-  real = np.stack([ex for ex in tfds.as_numpy(eval_ds)])
-  shape = real[0].shape
+    train_ds, eval_ds = input_pipeline.get_dataset(
+        dataset=FLAGS.dataset,
+        data_shape=FLAGS.data_shape,
+        problem="vae",
+        batch_size=FLAGS.batch_size,
+        normalize=FLAGS.normalize,
+        pca_ckpt=FLAGS.pca_ckpt,
+        slice_ckpt=FLAGS.slice_ckpt,
+        dim_weights_ckpt=FLAGS.dim_weights_ckpt,
+        include_cardinality=False,
+    )
+    eval_min, eval_max = eval_ds.min, eval_ds.max
+    eval_ds = eval_ds.unbatch()
+    if FLAGS.sample_size is not None:
+        eval_ds = eval_ds.take(FLAGS.sample_size)
+    real = np.stack([ex for ex in tfds.as_numpy(eval_ds)])
+    shape = real[0].shape
 
-  # Generate samples
-  generated = sample(FLAGS.sample_size, shape[-2], shape[-1], FLAGS.sample_seed,
-                     real)
+    # Generate samples
+    print(f"{FLAGS.sample_size = }")
+    generated = sample(FLAGS.sample_size, shape[-2], shape[-1], FLAGS.sample_seed, real)
 
-  # Dump generated to CPU.
-  generated = np.array(generated)
+    # Dump generated to CPU.
+    generated = np.array(generated)
+    embed()
 
-  # Write samples to disk (used for listening).
-  if FLAGS.flush:
-    # Inverse transform data back to listenable/unnormalized latent space.
-    generated_t = input_pipeline.inverse_data_transform(generated,
-                                                        FLAGS.normalize, pca,
-                                                        train_ds.min,
-                                                        train_ds.max, slice_idx,
-                                                        dim_weights)
-    real_t = input_pipeline.inverse_data_transform(real, FLAGS.normalize, pca,
-                                                   eval_min, eval_max,
-                                                   slice_idx, dim_weights)
-    data_utils.save(real_t, os.path.join(log_dir, 'mdn/real.pkl'))
-    data_utils.save(generated_t, os.path.join(log_dir, 'mdn/generated.pkl'))
+    # compute metrics
+    def _compute_metric(real, generated, metric):
+        return jnp.array([metric(r, g) for r, g in zip(real, generated)])
+
+    fd = _compute_metric(real, generated, metrics.frechet_distance)
+    mmd_rbf = _compute_metric(real, generated, metrics.mmd_rbf)
+    mmd_poly = _compute_metric(real, generated, metrics.mmd_polynomial)
+    print(f"{jnp.mean(fd) =}, {jnp.mean(mmd_rbf) =}, {jnp.mean(mmd_poly) = }")
+
+    # Write samples to disk (used for listening).
+    if FLAGS.flush:
+        # Inverse transform data back to listenable/unnormalized latent space.
+        generated_t = input_pipeline.inverse_data_transform(
+            generated,
+            FLAGS.normalize,
+            pca,
+            train_ds.min,
+            train_ds.max,
+            slice_idx,
+            dim_weights,
+        )
+        real_t = input_pipeline.inverse_data_transform(
+            real, FLAGS.normalize, pca, eval_min, eval_max, slice_idx, dim_weights
+        )
+        data_utils.save(real_t, os.path.join(log_dir, "mdn/real.pkl"))
+        data_utils.save(generated_t, os.path.join(log_dir, "mdn/generated.pkl"))
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)
