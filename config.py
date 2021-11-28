@@ -27,7 +27,8 @@ melody_2bar_converter = data.OneHotMelodyConverter(
     slice_bars=2,
     gap_bars=None,
     steps_per_quarter=4,
-    dedupe_event_lists=False)
+    dedupe_event_lists=False,
+)
 
 mel_2bar_nopoly_converter = data.OneHotMelodyConverter(
     skip_polyphony=True,
@@ -36,7 +37,8 @@ mel_2bar_nopoly_converter = data.OneHotMelodyConverter(
     slice_bars=2,
     gap_bars=None,
     steps_per_quarter=4,
-    dedupe_event_lists=False)
+    dedupe_event_lists=False,
+)
 
 melody_16bar_converter = data.OneHotMelodyConverter(
     skip_polyphony=False,
@@ -45,14 +47,18 @@ melody_16bar_converter = data.OneHotMelodyConverter(
     gap_bars=16,
     max_tensors_per_notesequence=None,
     steps_per_quarter=4,
-    dedupe_event_lists=False)
+    dedupe_event_lists=False,
+)
 
-multitrack_default_1bar_converter = data_hierarchical.MultiInstrumentPerformanceConverter(
-    num_velocity_bins=8,
-    hop_size_bars=1,
-    min_num_instruments=2,
-    max_num_instruments=8,
-    max_events_per_instrument=64)
+multitrack_default_1bar_converter = (
+    data_hierarchical.MultiInstrumentPerformanceConverter(
+        num_velocity_bins=8,
+        hop_size_bars=1,
+        min_num_instruments=2,
+        max_num_instruments=8,
+        max_events_per_instrument=64,
+    )
+)
 
 multitrack_zero_1bar_converter = data_hierarchical.MultiInstrumentPerformanceConverter(
     num_velocity_bins=8,
@@ -61,25 +67,30 @@ multitrack_zero_1bar_converter = data_hierarchical.MultiInstrumentPerformanceCon
     max_num_instruments=8,
     min_total_events=0,
     max_events_per_instrument=64,
-    drop_tracks_and_truncate=True)
+    drop_tracks_and_truncate=True,
+)
 
-MUSIC_VAE_CONFIG['melody-2-big'] = configs.CONFIG_MAP[
-    'cat-mel_2bar_big']._replace(data_converter=melody_2bar_converter)
+MUSIC_VAE_CONFIG["melody-2-big"] = configs.CONFIG_MAP["cat-mel_2bar_big"]._replace(
+    data_converter=melody_2bar_converter
+)
 
-MUSIC_VAE_CONFIG['melody-16-big'] = configs.CONFIG_MAP[
-    'hierdec-mel_16bar']._replace(data_converter=melody_16bar_converter)
+MUSIC_VAE_CONFIG["melody-16-big"] = configs.CONFIG_MAP["hierdec-mel_16bar"]._replace(
+    data_converter=melody_16bar_converter
+)
 
-MUSIC_VAE_CONFIG['multi-1-big'] = configs.CONFIG_MAP[
-    'hier-multiperf_vel_1bar_big']._replace(
-        data_converter=multitrack_default_1bar_converter)
+MUSIC_VAE_CONFIG["multi-1-big"] = configs.CONFIG_MAP[
+    "hier-multiperf_vel_1bar_big"
+]._replace(data_converter=multitrack_default_1bar_converter)
 
-MUSIC_VAE_CONFIG['multi-0min-1-big'] = configs.CONFIG_MAP[
-    'hier-multiperf_vel_1bar_big']._replace(
-        data_converter=multitrack_zero_1bar_converter)
+MUSIC_VAE_CONFIG["multi-0min-1-big"] = configs.CONFIG_MAP[
+    "hier-multiperf_vel_1bar_big"
+]._replace(data_converter=multitrack_zero_1bar_converter)
 
-MUSIC_VAE_CONFIG['melody-2-big-nopoly'] = configs.Config(
-    model=configs.MusicVAE(configs.lstm_models.BidirectionalLstmEncoder(),
-                           configs.lstm_models.CategoricalLstmDecoder()),
+MUSIC_VAE_CONFIG["melody-2-big-nopoly"] = configs.Config(
+    model=configs.MusicVAE(
+        configs.lstm_models.BidirectionalLstmEncoder(),
+        configs.lstm_models.CategoricalLstmDecoder(),
+    ),
     hparams=configs.merge_hparams(
         configs.lstm_models.get_default_hparams(),
         configs.HParams(
@@ -88,6 +99,8 @@ MUSIC_VAE_CONFIG['melody-2-big-nopoly'] = configs.Config(
             z_size=512,
             enc_rnn_size=[2048],
             dec_rnn_size=[2048, 2048, 2048],
-        )),
+        ),
+    ),
     note_sequence_augmenter=data.NoteSequenceAugmenter(transpose_range=(-5, 5)),
-    data_converter=mel_2bar_nopoly_converter)
+    data_converter=mel_2bar_nopoly_converter,
+)
