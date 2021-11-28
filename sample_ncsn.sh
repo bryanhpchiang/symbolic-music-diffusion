@@ -6,4 +6,4 @@ python sample_ncsn.py \
   --compute_metrics=True \
   --sample_seed=42 \
   --sample_size="$SAMPLE_SIZE" \
-  --sampling_dir=dataset/samples_"$SELECT"_2
+  --sampling_dir=dataset/samples_"$SELECT"_sdedit1

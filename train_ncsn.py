@@ -619,7 +619,7 @@ def sample(
     init_rng, ld_rng = jax.random.split(rng)
 
     # Initial state has mean=0, var=1.
-    if sampling == "ddpm":
+    if sampling == "ddpm":  # TODO: change this based on infilling
         init = jax.random.normal(key=init_rng, shape=(num_samples, *sample_shape))
     else:
         rho = jnp.sqrt(12) / 2
@@ -628,7 +628,14 @@ def sample(
         )
 
     generated, collection, ld_metrics = sampling_algorithm(
-        ld_rng, scorenet, sigmas, init, epsilon, steps, denoise, False
+        ld_rng,
+        scorenet,
+        sigmas,
+        init,
+        epsilon,
+        steps,
+        denoise,
+        False,  # TODO: change to flag
     )
     ld_metrics = ebm_utils.collate_sampling_metrics(ld_metrics)
     return generated, collection, ld_metrics

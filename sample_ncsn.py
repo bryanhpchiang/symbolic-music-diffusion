@@ -450,6 +450,7 @@ def generate_samples(sample_shape, num_samples, rng_seed=1, checkpoint_step=None
     rng, sample_rng = jax.random.split(rng)
 
     t0 = time.time()
+    embed()
     generated, collection, ld_metrics = train_ncsn.sample(
         optimizer.target,
         sigmas,

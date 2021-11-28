@@ -141,12 +141,11 @@ def main(argv):
 
     log_dir = FLAGS.input
     real = data_utils.load(os.path.join(log_dir, "real.pkl"))
-    # embed()
     generated = data_utils.load(os.path.join(log_dir, "generated.pkl"))
 
-    collection = data_utils.load(os.path.join(log_dir, "collection.pkl"))
-    idx = np.linspace(0, 40, 10).astype(np.int32)
-    collection = collection[idx]
+    # collection = data_utils.load(os.path.join(log_dir, "collection.pkl"))
+    # idx = np.linspace(0, 40, 10).astype(np.int32)
+    # collection = collection[idx]
 
     # Get baselines.
     start_emb = real[:, 7, :]

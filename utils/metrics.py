@@ -19,6 +19,7 @@ import note_seq
 import numpy as np
 import scipy
 from sklearn import metrics
+from torch.functional import norm
 
 
 def frechet_distance(real, fake):
@@ -137,15 +138,15 @@ def var_note_duration(ns, hop_size=1, frame_size=1):
     return framewise_statistic(ns, stat_fn, hop_size=hop_size, frame_size=frame_size)
 
 
-def perceptual_midi_histograms(ns, interval=1):
+def perceptual_midi_histograms(ns, frame_size=1, hop_size=1):
     """Generates histograms for each MIDI feature."""
     return dict(
-        nd=note_density(ns, interval=interval),
-        pr=pitch_range(ns, interval=interval),
-        mp=mean_pitch(ns, interval=interval),
-        vp=var_pitch(ns, interval=interval),
-        md=mean_note_duration(ns, interval=interval),
-        vd=var_note_duration(ns, interval=interval),
+        nd=note_density(ns, frame_size=frame_size, hop_size=hop_size),
+        pr=pitch_range(ns, frame_size=frame_size, hop_size=hop_size),
+        mp=mean_pitch(ns, frame_size=frame_size, hop_size=hop_size),
+        vp=var_pitch(ns, frame_size=frame_size, hop_size=hop_size),
+        md=mean_note_duration(ns, frame_size=frame_size, hop_size=hop_size),
+        vd=var_note_duration(ns, frame_size=frame_size, hop_size=hop_size),
     )
 
 
@@ -158,7 +159,7 @@ def perceptual_midi_statistics(ns, interval=1, vector=False):
       vector: If True, returns statistics as a feature vector.
     """
     features = {}
-    histograms = perceptual_midi_histograms(ns, interval=interval)
+    histograms = perceptual_midi_histograms(ns, frame_size=interval, hop_size=2)
     for key in histograms:
         mu = histograms[key].mean()
         var = histograms[key].var()
@@ -189,6 +190,59 @@ def perceptual_similarity(ns1, ns2, interval=1):
         mu2, var2 = stats2[key]
         similarity[key] = overlapping_area(mu1, mu2, var1, var2)
     return similarity
+
+
+def get_oa_metrics(note_sequences):
+    histograms_list = []
+    for ns in note_sequences:
+        histograms = perceptual_midi_histograms(ns, frame_size=4, hop_size=2)
+        histograms_list.append(histograms)
+
+    pitch_oa = []
+    duration_oa = []
+
+    for histograms in histograms_list:
+        num_frames = len(histograms["mp"])
+        for i in range(num_frames - 1):
+            oa_pitch = overlapping_area(
+                histograms["mp"][i],
+                histograms["mp"][i + 1],
+                histograms["vp"][i],
+                histograms["vp"][i + 1],
+            )
+            oa_duration = overlapping_area(
+                histograms["md"][i],
+                histograms["md"][i + 1],
+                histograms["vd"][i],
+                histograms["vd"][i + 1],
+            )
+            pitch_oa.append(oa_pitch)
+            duration_oa.append(oa_duration)
+
+    # pitch, duration OAs
+    return pitch_oa, duration_oa
+
+
+def norm_rel_sim(gt, gen):
+    return max(0, 1 - abs(gen - gt) / gt)
+
+
+def framewise_self_sim(real_note_seqs, gen_note_seqs):
+
+    gen_pitches, gen_durations = get_oa_metrics(gen_note_seqs)
+    gt_pitches, gt_durations = get_oa_metrics(real_note_seqs)
+
+    mu_gen_pitch, std_gen_pitch = scipy.stats.norm.fit(gen_pitches)
+    mu_gen_duration, std_gen_duration = scipy.stats.norm.fit(gen_durations)
+    mu_gt_pitch, std_gt_pitch = scipy.stats.norm.fit(gt_pitches)
+    mu_gt_duration, std_gt_duration = scipy.stats.norm.fit(gt_durations)
+
+    pitch_consistency = norm_rel_sim(mu_gt_pitch, mu_gen_pitch)
+    pitch_variance = norm_rel_sim(std_gt_pitch ** 2, std_gen_pitch ** 2)
+    duration_consistency = norm_rel_sim(mu_gt_duration, mu_gen_duration)
+    duration_variance = norm_rel_sim(std_gt_duration ** 2, std_gen_duration ** 2)
+
+    return pitch_consistency, pitch_variance, duration_consistency, duration_variance
 
 
 def overlapping_area(mu1, mu2, var1, var2):
