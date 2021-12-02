@@ -29,8 +29,6 @@ def main(argv):
         # load all the pickles
         id2note_seqs[id] = [_load_pkl(fname) for fname in glob.glob(f"{path}/*.pkl")]
 
-    # embed()
-
     # calculate metrics
     (
         pitch_consistency,

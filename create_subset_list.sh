@@ -1,0 +1,1 @@
+find lmd_full/subset  -type f > lmd_full/subset_list

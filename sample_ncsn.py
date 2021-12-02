@@ -510,6 +510,7 @@ def main(argv):
         eval_ds = eval_ds.take(FLAGS.sample_size)
     real = np.stack([ex for ex in tfds.as_numpy(eval_ds)])
     shape = real[0].shape
+    embed()
 
     # Generation.
     if FLAGS.infill:  # Infilling.

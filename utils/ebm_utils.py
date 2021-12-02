@@ -321,7 +321,7 @@ def diffusion_dynamics(
           (num_sigmas * T + 1 + int(denoise), :).
       ld_metrics: Metrics collected for each noise level with shape (num_sigmas, T).
     """
-    embed()
+    # embed()
     if not infill:
         infill_samples = jnp.zeros(init.shape)
         infill_masks = jnp.zeros(init.shape)
