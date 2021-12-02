@@ -7,12 +7,13 @@ from pathlib import Path
 import jax
 import note_seq
 import numpy as np
-from scipy.sparse import data
 import tensorflow as tf
 from absl import app, flags, logging
 from flax.training import checkpoints
 from IPython import embed
 from magenta.models.music_vae import TrainedModel
+from scipy.sparse import data
+from tqdm import tqdm
 
 import config
 import input_pipeline
@@ -25,8 +26,8 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
     "long_track",
-    "mario.mid",
-    "File path to MIDI file of original long track that we will embed another shorter melody (either existing or user-generated)",
+    "lmd_full/edit_splits",
+    "File path to pickled file containing list of long tracks that we will embed another shorter melody (either existing or user-generated)",
 )
 
 flags.DEFINE_string(
@@ -54,7 +55,7 @@ flags.DEFINE_enum(
 )
 flags.DEFINE_integer(
     "latent_edit_start_index",
-    10,
+    3,
     "We choose the start position within long_track to embed our short_track. Only applicable when editing_space is 'latent'.",
 )
 
@@ -189,13 +190,20 @@ def _preprocess_batch(batch):
     return batch, ds_min, ds_max
 
 
-def _extract_latents(model, songs):
+def _extract_latents(model, songs, keep_long=None, min_len=30):
+    logging.info("encoding songs")
     encoding_matrices = song_utils.encode_songs(model, songs)
     encoding_matrices = np.array([batch[0] for batch in encoding_matrices])
-    # TODO: concatenate into a single matrix with all latents
+    # lengths = np.array([len(latents) for latents in encoding_matrices])
+    batch = []
+    for latent in encoding_matrices:
+        if keep_long and min_len and len(latent) < min_len:
+            continue
+        batch.append(latent[:min_len])
 
-    # for now, just take the first one
-    batch = encoding_matrices[0:1]
+    batch = np.stack(batch)
+    logging.info(f"{len(batch) = }")
+    # batch = encoding_matrices[0:1]
     processed, ds_min, ds_max = _preprocess_batch(batch)
     return processed, ds_min, ds_max
 
@@ -237,30 +245,56 @@ def main(argv):
     del argv
 
     # setup
+    output_dir = FLAGS.output
+    os.makedirs(output_dir)
+
     model_config = config.MUSIC_VAE_CONFIG[FLAGS.latent_model]
     model = TrainedModel(
         model_config, batch_size=1, checkpoint_dir_or_path=FLAGS.latent_checkpoint
     )
 
-    output_dir = FLAGS.output
-    os.makedirs(output_dir)
-
     # load note_seqs
-    long_ns = note_seq.midi_file_to_note_sequence(FLAGS.long_track)
+    long_tracks = data_utils.load(os.path.join(FLAGS.long_track, "edit_note_seqs.pkl"))
+    real_long_tracks = data_utils.load(
+        os.path.join(FLAGS.long_track, "real_note_seqs.pkl")
+    )
+
+    # save all real long tracks
+    real_step = 0
+    ns_dir = os.path.join(output_dir, "real", "ns")
+    Path(ns_dir).mkdir(parents=True, exist_ok=True)
+    for path, ns in real_long_tracks:
+        melodies = song_utils.extract_melodies(ns)
+        for melody in melodies:
+            data_utils.save(ns, os.path.join(ns_dir, f"{real_step+1}.pkl"))
+            real_step += 1
+
+    # long_tracks = note_seq.midi_file_to_note_sequence(FLAGS.long_track)
     short_ns = note_seq.midi_file_to_note_sequence(FLAGS.short_track)
 
-    # load in latents for melodies
-    long_songs = _extract_songs(model, model_config, long_ns)
+    # extract all melodies
+    all_long_songs = [
+        _extract_songs(model, model_config, long_ns) for _, long_ns in long_tracks
+    ]
     short_songs = _extract_songs(model, model_config, short_ns)
 
-    # save all the melodies to disk
-    print(f"{len(long_songs) = }, {len(short_songs) = }")
-    for i, song in enumerate(long_songs):
-        _save_ns_as_midi(song.note_sequence, f"{output_dir}/long_melody_{i}.mid")
+    # save melodies to the disk
+    logging.info(f"{len(short_songs) = }")
+    for i, long_songs in enumerate(all_long_songs):
+        # print(f"{len(all_long_songs) = }")
+        file_name = long_tracks[i][0].split("/")[-1].split(".")[0]
+        melodies_dir = os.path.join(output_dir, f"{i}_{file_name}")
+        Path(melodies_dir).mkdir(parents=True, exist_ok=True)
+        for j, song in enumerate(long_songs):
+            _save_ns_as_midi(
+                song.note_sequence, os.path.join(melodies_dir, f"melody_{j}.mid")
+            )
+
     for i, song in enumerate(short_songs):
         _save_ns_as_midi(song.note_sequence, f"{output_dir}/short_melody_{i}.mid")
 
     # edit the melodies
+    unedited_samples = None
     edited_samples = None
     masks = None
     ds_min = ds_max = None
@@ -268,18 +302,30 @@ def main(argv):
     if FLAGS.mode in ["composition", "editing"]:
         if FLAGS.editing_space == "latent":
             # select which song we want to use
+
             # TODO: modify if needed later
-            long_latent, ds_min, ds_max = _extract_latents(model, [long_songs[3]])
-            short_latent, _, _ = _extract_latents(model, [short_songs[0]])
+            indexed_long_songs = []  # find all melodies that are long enough
+            for long_songs in all_long_songs:
+                for long_song in long_songs:
+                    # TODO: better heuristic for choosing song to use
+                    if long_song.note_sequence.total_time > 90:
+                        indexed_long_songs.append(long_song)
+                        break
+
+            long_latent, ds_min, ds_max = _extract_latents(
+                model, indexed_long_songs, keep_long=True, min_len=30
+            )
+            unedited_samples = long_latent
+            short_latent, *_ = _extract_latents(model, [short_songs[0]])
 
             edited = long_latent
+
             start = FLAGS.latent_edit_start_index
 
             edit_idx = list(range(start, start + short_latent.shape[1]))
             edited[:, edit_idx, :] = short_latent
 
             edited_samples = edited
-
             masks = np.ones(edited.shape)  # 1 to hold fixed
             masks[:, edit_idx, :] = 0  # 0 to edit
     elif FLAGS.mode in ["synthesis"]:
@@ -306,25 +352,30 @@ def main(argv):
         if dim_weights_ckpt
         else None
     )
-    gen = input_pipeline.inverse_data_transform(
-        generated,
-        normalize=FLAGS.normalize,
-        pca=pca,
-        data_min=ds_min,
-        data_max=ds_max,
-        slice_idx=slice_idx,
-        dim_weights=dim_weights,
-        out_channels=512,
-    )
-    print(f"{gen.shape = }")
 
     # save everything to disk
     id2emb = {
-        "gen": gen,
-        "baseline": edited_samples,
+        # (num_seq, seq_len, 512)
+        "generated": generated,
+        "edited": edited_samples,
+        "unedited": unedited_samples,
     }
 
     for id, emb in id2emb.items():
+        logging.info(f"saving {id} to disk, {emb.shape = }")
+        # decode
+        emb = input_pipeline.inverse_data_transform(
+            emb,
+            normalize=FLAGS.normalize,
+            pca=pca,
+            data_min=ds_min,
+            data_max=ds_max,
+            slice_idx=slice_idx,
+            dim_weights=dim_weights,
+            out_channels=512,
+        )
+
+        # create folders
         ns_dir = os.path.join(output_dir, id, "ns")
         Path(ns_dir).mkdir(parents=True, exist_ok=True)
         midi_dir = os.path.join(output_dir, id, "midi")
@@ -335,7 +386,7 @@ def main(argv):
         # ns_dir = os.path.join(FLAGS.output, sample_split, "ns")
         # Path(audio_dir).mkdir(parents=True, exist_ok=True)
         # Path(image_dir).mkdir(parents=True, exist_ok=True)
-
+        logging.info("decoding")
         decoded = _decode_emb(emb, model, model_config.data_converter)
         for i, song in enumerate(decoded):
             ns = song.note_sequence

@@ -15,7 +15,9 @@
 # Lint as: python3
 """Metrics."""
 import math
+from absl import logging
 import note_seq
+from tqdm import tqdm
 import numpy as np
 import scipy
 from sklearn import metrics
@@ -84,6 +86,7 @@ def mmd_polynomial(real, fake, degree=2, gamma=1, coef0=0):
 def framewise_statistic(ns, stat_fn, hop_size=1, frame_size=1):
     """Computes framewise MIDI statistic."""
     total_time = int(math.ceil(ns.total_time))
+    total_time = 90  # 12/1: arbitrary cap for now
     frames = []
     trim = frame_size - hop_size
     for i in range(0, total_time - trim, hop_size):
@@ -194,7 +197,8 @@ def perceptual_similarity(ns1, ns2, interval=1):
 
 def get_oa_metrics(note_sequences):
     histograms_list = []
-    for ns in note_sequences:
+    logging.info("getting histograms")
+    for ns in tqdm(note_sequences):
         histograms = perceptual_midi_histograms(ns, frame_size=4, hop_size=2)
         histograms_list.append(histograms)
 
@@ -228,10 +232,12 @@ def norm_rel_sim(gt, gen):
 
 
 def framewise_self_sim(real_note_seqs, gen_note_seqs):
-
+    """Compute self-similarity metrics based on OA betweeen two lists of note sequences."""
+    logging.info("getting oa metrics")
     gen_pitches, gen_durations = get_oa_metrics(gen_note_seqs)
     gt_pitches, gt_durations = get_oa_metrics(real_note_seqs)
 
+    logging.info("calculating")
     mu_gen_pitch, std_gen_pitch = scipy.stats.norm.fit(gen_pitches)
     mu_gen_duration, std_gen_duration = scipy.stats.norm.fit(gen_durations)
     mu_gt_pitch, std_gt_pitch = scipy.stats.norm.fit(gt_pitches)

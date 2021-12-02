@@ -1,0 +1,5 @@
+- filter 2 sets of 50 from subset with length > 1.5 minutes
+- modify sd_edit to take in file of mid file paths for long_track
+- sample all of them
+- write baselines to disk as well
+- calculate OA metrics for both of them
