@@ -5,9 +5,11 @@ FUNKY_TRACK=c/ca8824e02b7f540721c29c25cc8a5fd2.mid
 
 python sd_edit.py --long_track "lmd_full/edit_splits" \
                 --editing_space "latent" \
+                --mode "composition" \
                 --short_track "$SHORT_TRACK" \
                 --latent_checkpoint "$MUSICVAE_CKPT" \
                 --sampling "ddpm" \
                 --flagfile=configs/custom_ddpm-mel-32seq-512.cfg \
                 --sample_seed=42 \
-                --output latent_edit
+                --num_sigmas=300 \
+                --output test_latent

@@ -39,6 +39,23 @@ def main(argv):
                 end_time=(i + 1) * duration + offset,
                 velocity=80,
             )
+    elif FLAGS.id == "minor_scale":
+        note_names = ["E4", "F#4", "G4", "A4", "B4", "C5", "D#5", "E5"]
+        offset = 0.5
+        duration = 0.5
+        repeats = 5
+        for j in range(repeats):
+            for i, note_name in enumerate(note_names):
+                pitch = pretty_midi.note_name_to_number(note_name)
+                start_time = i * duration + offset
+                end_time = (i + 1) * duration + offset
+                ns.notes.add(
+                    pitch=pitch,
+                    start_time=start_time,
+                    end_time=end_time,
+                    velocity=80,
+                )
+            offset = end_time
 
     # save ns
     Path(FLAGS.output).mkdir(parents=True, exist_ok=True)

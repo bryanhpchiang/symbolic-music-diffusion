@@ -23,8 +23,9 @@ def _load_pkl(fname):
 def main(argv):
     # load real and generated note_seqs
     id2note_seqs = {}
-    real = ["real"]
-    fake = ["unedited", "generated", "edited"]
+
+    real = ["unedited"]
+    fake = ["generated", "edited"]
 
     for id in real + fake:
         path = os.path.join(FLAGS.input, id, "ns")
